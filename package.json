@@ -1,0 +1,20 @@
+{
+  "name": "vue-socketio-server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node app/index.js"
+  },
+  "author": "Can Ozgen",
+  "license": "MIT",
+  "dependencies": {
+    "bcrypt": "^1.0.2",
+    "body-parser": "^1.17.2",
+    "express": "^4.15.4",
+    "jsonwebtoken": "^7.4.2",
+    "mongoose": "^4.11.6",
+    "morgan": "^1.8.2",
+    "socketio": "^1.0.0"
+  }
+}
