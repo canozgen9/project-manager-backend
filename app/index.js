@@ -19,7 +19,7 @@ app.set('superSecret', config.secret);
 
 //Connect to Mongoose
 mongoose.Promise = global.Promise;
-mongoose.connect('mongodb://23.251.128.252/projectmanager');
+mongoose.connect('mongodb://localhost/projectmanager');
 var db = mongoose.connection;
 
 //Models
