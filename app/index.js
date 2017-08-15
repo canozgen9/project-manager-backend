@@ -19,7 +19,7 @@ app.set('superSecret', config.secret);
 
 //Connect to Mongoose
 mongoose.Promise = global.Promise;
-mongoose.connect('mongodb://localhost/projectmanager');
+mongoose.connect('mongodb://23.251.128.252/projectmanager');
 var db = mongoose.connection;
 
 //Models
@@ -34,7 +34,7 @@ var apiRoutes = express.Router();
 // Add headers
 app.use(function (req, res, next) {
     // Website you wish to allow to connect
-    res.setHeader('Access-Control-Allow-Origin', 'http://localhost:8080');
+    res.setHeader('Access-Control-Allow-Origin', 'http://23.251.128.252:8080');
 
     // Request methods you wish to allow
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
