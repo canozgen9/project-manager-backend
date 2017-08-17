@@ -38,6 +38,9 @@ var userSchema = mongoose.Schema({
     ],
     color: {
         type: String
+    },
+    avatar: {
+        type: String
     }
 });
 

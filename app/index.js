@@ -8,6 +8,8 @@ var mongoose    = require('mongoose');
 var bcrypt = require('bcrypt');
 var jwt    = require('jsonwebtoken'); // used to create, sign, and verify tokens
 var config = require('./config');
+var multer = require('multer');
+var path = require('path');
 
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
@@ -22,25 +24,42 @@ mongoose.Promise = global.Promise;
 mongoose.connect('mongodb://localhost/projectmanager');
 var db = mongoose.connection;
 
-//Models
+/*
+* |--------------------------------------------------------------------------------------|
+* |                                     MODELS                                           |
+* |--------------------------------------------------------------------------------------|
+*/
 Message = require('./models/message');
 User = require('./models/user');
+Project = require('./models/project/project');
+Team = require('./models/project/team');
+Task = require('./models/project/task');
 
+
+/*
+* |--------------------------------------------------------------------------------------|
+* |                                       API                                            |
+* |--------------------------------------------------------------------------------------|
+*/
 var apiRoutes = express.Router();
 
-//Middleware
+var app_url = 'localhost';
+// app_url = '23.251.128.252';
 
+app.use(express.static(path.join(__dirname, '../public')));
 
-// Add headers
+console.log(__dirname);
+
+// Add middleware
 app.use(function (req, res, next) {
     // Website you wish to allow to connect
-    res.setHeader('Access-Control-Allow-Origin', 'http://23.251.128.252:8080');
+    res.setHeader('Access-Control-Allow-Origin', 'http://'+ app_url +':8080');
 
     // Request methods you wish to allow
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
 
     // Request headers you wish to allowcd
-    res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type');
+    res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,Content-Type');
 
     // Set to true if you need the website to include cookies in the requests sent
     // to the API (e.g. in case you use sessions)
@@ -50,6 +69,7 @@ app.use(function (req, res, next) {
     next();
 });
 
+// Add middleware
 apiRoutes.use(function(req, res, next) {
     // check header or url parameters or post parameters for token
     var token = req.body.token || req.query.token || req.headers['x-access-token'];
@@ -88,7 +108,7 @@ apiRoutes.use(function(req, res, next) {
     }
 });
 
-//Bcrypt
+// Hashing
 function hashPassword(candicatePassword, cb) {
     bcrypt.genSalt(11, function (err, salt) {
         if (err) return cb(err);
@@ -106,10 +126,33 @@ function comparePassword (candicatePassword, encrypted, cb) {
     })
 }
 
-//App routes
+/*
+* |--------------------------------------------------------------------------------------|
+* |                                     ROUTES                                           |
+* |--------------------------------------------------------------------------------------|
+*/
 
-//Authenticate
-app.post('/signin', function(req, res) {
+app.post('/user/new', function(req, res) {
+    var user = req.body;
+    hashPassword(user.password, function(err, crypted){
+        if(err) return console.log(err);
+        user.password = crypted;
+        var color_index = Math.floor((Math.random() * colors.length));
+        var depth_index = Math.floor((Math.random() * depths.length));
+        user.color = colors[color_index] + ' ' + depths[depth_index];
+        User.create(user, function(err) {
+            if (err) throw err;
+            io.sockets.emit('updateAuthenticatedUser', {type: 1, message: user.username + ' has joined our family.'})
+            res.json({ success: true, user: user });
+        });
+    });
+});
+
+/*
+* AUTHENTICATE ROUTES
+*/
+
+app.post('/user/authenticate', function(req, res) {
     User.findOne({
         username: req.body.username
     }, function(err, user) {
@@ -133,18 +176,7 @@ app.post('/signin', function(req, res) {
     });
 });
 
-app.post('/check', function(req, res) {
-    var token = req.body.token || req.query.token || req.headers['x-access-token'];
-    jwt.verify(token, app.get('superSecret'), function(err, decoded) {
-        if (err) return res.json({ success: false, message: 'Failed to authenticate token.' });
-        res.json({
-            success: true,
-            user: decoded._doc
-        })
-    });
-});
-
-app.post('/logout', function(req, res) {
+app.post('/user/logout', function(req, res) {
     var token = req.body.token || req.query.token || req.headers['x-access-token'];
     jwt.verify(token, app.get('superSecret'), function(err, decoded) {
         if (err) return res.json({ success: false, message: 'Failed to authenticate token.' });
@@ -156,19 +188,20 @@ app.post('/logout', function(req, res) {
     });
 });
 
-app.post('/signup', function(req, res) {
-    var user = req.body;
-    hashPassword(user.password, function(err, crypted){
-        if(err) return console.log(err);
-        user.password = crypted;
-        user.color = colors[(colorIndex++)%colors.length];
-        User.create(user, function(err) {
-            if (err) throw err;
-            io.sockets.emit('updateAuthenticatedUser', {type: 1, message: user.username + ' has joined our family.'})
-            res.json({ success: true, user: user });
-        });
+app.post('/user/check', function(req, res) {
+    var token = req.body.token || req.query.token || req.headers['x-access-token'];
+    jwt.verify(token, app.get('superSecret'), function(err, decoded) {
+        if (err) return res.json({ success: false, message: 'Failed to authenticate token.' });
+        res.json({
+            success: true,
+            user: decoded._doc
+        })
     });
 });
+
+/*
+* USER ROUTES
+*/
 
 apiRoutes.get('/users', function(req, res) {
     var token = req.body.token || req.query.token || req.headers['x-access-token'];
@@ -184,19 +217,11 @@ apiRoutes.get('/users', function(req, res) {
     });
 });
 
-apiRoutes.get('/user', function(req, res) {
-    var token = req.body.token || req.query.token || req.headers['x-access-token'];
-    jwt.verify(token, app.get('superSecret'), function(err, decoded) {
-        if (err) return res.json({ success: false, message: 'Failed to authenticate token.' });
-        User.findOne({_id: (req.body.id || req.query.id) }, function (err, user) {
-            if (err) return res.json({success: false, message: err})
-            res.json({success: true, user: user})
-        })
+/*
+* FRIENDSHIP ROUTES
+*/
 
-    });
-});
-
-apiRoutes.get('/friends', function(req, res) {
+apiRoutes.get('/user/friends', function(req, res) {
     var token = req.body.token || req.query.token || req.headers['x-access-token'];
     jwt.verify(token, app.get('superSecret'), function(err, decoded) {
         if (err) return res.json({ success: false, message: 'Failed to authenticate token.' });
@@ -210,8 +235,7 @@ apiRoutes.get('/friends', function(req, res) {
     });
 });
 
-
-apiRoutes.get('/intivations', function(req, res) {
+apiRoutes.get('/user/intivations/all', function(req, res) {
     var token = req.body.token || req.query.token || req.headers['x-access-token'];
     jwt.verify(token, app.get('superSecret'), function(err, decoded) {
         if (err) return res.json({ success: false, message: 'Failed to authenticate token.' });
@@ -226,28 +250,7 @@ apiRoutes.get('/intivations', function(req, res) {
     });
 });
 
-apiRoutes.post('/acceptintivation', function(req, res) {
-    var token = req.body.token || req.query.token || req.headers['x-access-token'];
-    jwt.verify(token, app.get('superSecret'), function(err, decoded) {
-        User.findOneAndUpdate({ _id: decoded._doc._id }, {$pull: { intivations : req.body.candicateUserId }, $push: { friends : req.body.candicateUserId }}, function (err, requestedUser) {
-            if( err) console.log(err)
-            User.findOneAndUpdate({ _id: req.body.candicateUserId }, {$push: { friends : decoded._doc._id }}, function (err, intivatorUser) {
-                if( err) console.log(err)
-                for (var socket_id in io.sockets.connected) {
-                    if(io.sockets.connected[socket_id].user._id === decoded._doc._id){
-                        io.sockets.connected[socket_id].emit('updateAuthenticatedUser',{type: 0, message: intivatorUser.username + " is your friend now!"})
-                    }
-                    if(io.sockets.connected[socket_id].user._id === req.body.candicateUserId ){
-                        io.sockets.connected[socket_id].emit('updateAuthenticatedUser',{type: 0, message: requestedUser.username + " accepted your intivation!"})
-                    }
-                }
-                res.json({success: true})
-            })
-        })
-    });
-});
-
-apiRoutes.post('/sendintivation', function(req, res) {
+apiRoutes.post('/user/intivations/send', function(req, res) {
     var token = req.body.token || req.query.token || req.headers['x-access-token'];
     jwt.verify(token, app.get('superSecret'), function(err, decoded) {
         if (err) return res.json({ success: false, message: 'Failed to authenticate token.' });
@@ -267,8 +270,75 @@ apiRoutes.post('/sendintivation', function(req, res) {
     });
 });
 
-//Routes
-apiRoutes.post('/messages', function(req, res){
+apiRoutes.post('/user/intivations/accept', function(req, res) {
+    var token = req.body.token || req.query.token || req.headers['x-access-token'];
+    jwt.verify(token, app.get('superSecret'), function(err, decoded) {
+        User.findOneAndUpdate({ _id: decoded._doc._id }, {$pull: { intivations : req.body.candicateUserId }, $push: { friends : req.body.candicateUserId }}, function (err, requestedUser) {
+            if( err) console.log(err);
+            User.findOneAndUpdate({ _id: req.body.candicateUserId }, {$push: { friends : decoded._doc._id }}, function (err, intivatorUser) {
+                if( err) console.log(err);
+                for (var socket_id in io.sockets.connected) {
+                    if(io.sockets.connected[socket_id].user._id === decoded._doc._id){
+                        io.sockets.connected[socket_id].emit('updateAuthenticatedUser',{type: 0, message: intivatorUser.username + " is your friend now!"})
+                    }
+                    if(io.sockets.connected[socket_id].user._id === req.body.candicateUserId ){
+                        io.sockets.connected[socket_id].emit('updateAuthenticatedUser',{type: 0, message: requestedUser.username + " accepted your intivation!"})
+                    }
+                }
+                res.json({success: true})
+            })
+        })
+    });
+});
+
+/*
+* PROFILE ROUTES
+*/
+
+apiRoutes.get('/user/profile', function(req, res) {
+    var token = req.body.token || req.query.token || req.headers['x-access-token'];
+    jwt.verify(token, app.get('superSecret'), function(err, decoded) {
+        if (err) return res.json({ success: false, message: 'Failed to authenticate token.' });
+        User.findOne({_id: (req.body.id || req.query.id) }, function (err, user) {
+            if (err) return res.json({success: false, message: err})
+            res.json({success: true, user: user})
+        })
+
+    });
+});
+
+var storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, './public/uploads/avatars/')
+    },
+    filename: function (req, file, cb) {
+        cb(null, Date.now() + path.extname(file.originalname))
+    }
+});
+
+/*
+* UPLOAD ROUTES
+*/
+
+var upload = multer({storage: storage}).single('image');
+
+app.post('/uploads', function(req,res) {
+    console.log(req);
+    upload(req, res, function (err) {
+        if (err) {
+            console.log(err);
+            res.json({success: false, message: err});
+            return;
+        }
+        res.json({success: true, filepath: '/uploads/avatars/'+req.file.filename})
+    })
+});
+
+/*
+* MESSAGE ROUTES
+*/
+
+apiRoutes.post('/project/team/messages', function(req, res){
     var token = req.body.token || req.query.token || req.headers['x-access-token'];
     jwt.verify(token, app.get('superSecret'), function(err, decoded) {
         if (err) return res.json({ success: false, message: 'Failed to authenticate token.' });
@@ -282,7 +352,12 @@ apiRoutes.post('/messages', function(req, res){
 
 app.use('/api', apiRoutes);
 
-//Server
+/*
+* |--------------------------------------------------------------------------------------|
+* |                                     SERVER                                           |
+* |--------------------------------------------------------------------------------------|
+*/
+
 server.listen(4321, function(){
     console.log('----------------------------------');
     console.log("Server is running on 4321");
@@ -290,21 +365,30 @@ server.listen(4321, function(){
 });
 
 var colors = [
-    'indigo',
     'red',
-    'teal',
+    'pink',
     'purple',
+    'deep-purple',
+    'indigo',
+    'blue',
+    'light-blue',
+    'teal',
     'green',
+    'cyan',
+    'light-green',
     'orange',
+    'deep-orange',
     'brown',
-    'indigo darken-4',
-    'red darken-4',
-    'teal darken-4',
-    'purple darken-4',
-    'green darken-4',
-    'orange darken-4',
-    'brown darken-4'
+    'blue-grey',
+    'grey'
 ];
+
+var depths = [
+    'darken-1',
+    'darken-2',
+    'darken-3',
+    'darken-4'
+]
 
 var colorIndex = 0;
 
