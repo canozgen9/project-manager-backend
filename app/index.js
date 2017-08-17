@@ -142,7 +142,7 @@ app.post('/user/new', function(req, res) {
         user.color = colors[color_index] + ' ' + depths[depth_index];
         User.create(user, function(err) {
             if (err) throw err;
-            io.sockets.emit('updateAuthenticatedUser', {type: 1, message: user.username + ' has joined our family.'})
+            io.sockets.emit('updateAuthenticatedUser', {type: 1, message: nameTag(user) + ' has joined our family.'})
             res.json({ success: true, user: user });
         });
     });
@@ -166,7 +166,7 @@ app.post('/user/authenticate', function(req, res) {
                     var token = jwt.sign(user, app.get('superSecret'), {
                         expiresIn: 86400000  // expires in 24 hours
                     });
-                    io.sockets.emit('updateAuthenticatedUser', {type: 1, message: user.username + ' has logined.'})
+                    io.sockets.emit('updateAuthenticatedUser', {type: 1, message: nameTag(user) + ' has logined.'})
                     return res.json({success: true, user: user, token: token});
                 } else {
                     return res.json({ success: false, message: 'Authentication failed. Wrong password.' });
@@ -259,10 +259,10 @@ apiRoutes.post('/user/intivations/send', function(req, res) {
             if( err) console.log(err)
             for (var socket_id in io.sockets.connected) {
                 if(io.sockets.connected[socket_id].user._id === req.body.friend_id){
-                    io.sockets.connected[socket_id].emit('updateAuthenticatedUser',{type: 0, message: user.username + " sent you friend intivation!"})
+                    io.sockets.connected[socket_id].emit('updateAuthenticatedUser',{type: 0, message: nameTag(user) + " sent you friend intivation!"})
                 }
                 if(io.sockets.connected[socket_id].user._id === decoded._doc._id){
-                    io.sockets.connected[socket_id].emit('updateAuthenticatedUser',{type: 0, message: "You sent friend intivation to " + requestedUser.username + "!"})
+                    io.sockets.connected[socket_id].emit('updateAuthenticatedUser',{type: 0, message: "You sent friend intivation to " + nameTag(requestedUser) + "!"})
                 }
             }
             res.json({success: true})
@@ -279,10 +279,10 @@ apiRoutes.post('/user/intivations/accept', function(req, res) {
                 if( err) console.log(err);
                 for (var socket_id in io.sockets.connected) {
                     if(io.sockets.connected[socket_id].user._id === decoded._doc._id){
-                        io.sockets.connected[socket_id].emit('updateAuthenticatedUser',{type: 0, message: intivatorUser.username + " is your friend now!"})
+                        io.sockets.connected[socket_id].emit('updateAuthenticatedUser',{type: 0, message: nameTag(intivatorUser) + " is your friend now!"})
                     }
                     if(io.sockets.connected[socket_id].user._id === req.body.candicateUserId ){
-                        io.sockets.connected[socket_id].emit('updateAuthenticatedUser',{type: 0, message: requestedUser.username + " accepted your intivation!"})
+                        io.sockets.connected[socket_id].emit('updateAuthenticatedUser',{type: 0, message: nameTag(requestedUser) + " accepted your intivation!"})
                     }
                 }
                 res.json({success: true})
@@ -398,6 +398,10 @@ var serverLog = function (state, user, message) {
     console.log('')
 };
 
+var nameTag = function (user) {
+    return user.name + ' (@'+user.username+')'
+}
+
 io.on('connection', function(socket){
 
     // Send client info to connected user
@@ -406,12 +410,18 @@ io.on('connection', function(socket){
         var client = {
             socket_id: socket.id
         }
-        socket.user = user;
+        socket.user = {
+            username: user.username,
+            _id: user._id,
+            color: user.color,
+            email: user.email,
+            name: user.name
+        }
         socket.user.client = {
             socket_id: socket.id
         };
         socket.emit('setClient', client);
-        serverLog('CONNECT', socket.user.username, 'CONNECTED TO SERVER!')
+        serverLog('CONNECT', socket.user.name, 'CONNECTED TO SERVER!')
     });
 
     // Join user to rooms
@@ -419,7 +429,7 @@ io.on('connection', function(socket){
         rooms.forEach(function(room){
             socket.join(room);
             socket.emit('joinedRoom', room);
-            serverLog('JOIN', socket.user.username, 'JOINED TO ROOM('+room+')!')
+            serverLog('JOIN', socket.user.name, 'JOINED TO ROOM('+room+')!')
         })
 
     });
@@ -456,6 +466,7 @@ io.on('connection', function(socket){
     });
 
         socket.on('disconnect', function () {
+            if(socket.user)
             serverLog('DISCONNECT', socket.user.username, 'DISCONNECTED FROM SERVER')
         });
 
