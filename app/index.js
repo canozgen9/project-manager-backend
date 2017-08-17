@@ -44,7 +44,7 @@ Task = require('./models/project/task');
 var apiRoutes = express.Router();
 
 var app_url = 'localhost';
-// app_url = '23.251.128.252';
+app_url = '23.251.128.252';
 
 app.use(express.static(path.join(__dirname, '../public')));
 
