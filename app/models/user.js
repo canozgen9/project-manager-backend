@@ -28,6 +28,12 @@ var userSchema = mongoose.Schema({
             ref: 'Team'
         }
     ],
+    projects: [
+        {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Project'
+        }
+    ],
     friends: [
         {
             type: mongoose.Schema.Types.ObjectId,
@@ -38,6 +44,12 @@ var userSchema = mongoose.Schema({
         {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'User'
+        }
+    ],
+    teamIntivations: [
+        {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Team'
         }
     ],
     color: {

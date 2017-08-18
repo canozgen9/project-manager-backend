@@ -16,12 +16,10 @@ var projectSchema = mongoose.Schema({
         type: Date,
         default: Date.now
     },
-    authors: [
-        {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User'
-        }
-    ],
+    authors: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    },
     teams: [
         {
             type: mongoose.Schema.Types.ObjectId,

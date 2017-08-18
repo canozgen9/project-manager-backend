@@ -12,6 +12,16 @@ var teamSchema = mongoose.Schema({
         type: Date,
         default: Date.now
     },
+    sentIntivation: [
+        {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User'
+        }
+    ],
+    project: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Project'
+    },
     users: [
         {
             type: mongoose.Schema.Types.ObjectId,

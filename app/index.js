@@ -19,6 +19,8 @@ app.use(bodyParser.json());
 
 app.set('superSecret', config.secret);
 
+io.set('transports', ['websocket', 'flashsocket', 'htmlfile', 'xhr-polling', 'jsonp-polling', 'polling'] );
+
 //Connect to Mongoose
 mongoose.Promise = global.Promise;
 mongoose.connect('mongodb://localhost/projectmanager');
@@ -350,6 +352,129 @@ apiRoutes.post('/project/team/messages', function(req, res){
     });
 });
 
+/*
+* PROJECT ROUTES
+*/
+
+apiRoutes.post('/project/new', function(req, res){
+    var token = req.body.token || req.query.token || req.headers['x-access-token'];
+    jwt.verify(token, app.get('superSecret'), function(err, decoded) {
+        if (err) return res.json({ success: false, message: 'Failed to authenticate token.' });
+        var user = decoded._doc;
+        req.body.project.author = user._id;
+        Project.create(req.body.project, function(err, project) {
+            if( err) return res.json({ success: false, message: err });
+            User.findOneAndUpdate({_id: user._id},{$push: { projects : project._id }}, function(err, user){
+                if( err) return res.json({ success: false, message: err });
+                for (var socket_id in io.sockets.connected) {
+                    if(io.sockets.connected[socket_id].user._id === user._id){
+                        io.sockets.connected[socket_id].emit('updateAuthenticatedUser',{type: 0, message: project.title + ' has been created succesfully!'})
+                    }
+                }
+                res.json({success: true, project: project, user: user });
+            });
+        });
+    });
+});
+
+
+// params: user_id
+// return: success: Boolean, projects: Project[]
+apiRoutes.post('/projects/all', function(req, res) {
+    var token = req.body.token || req.query.token || req.headers['x-access-token'];
+    jwt.verify(token, app.get('superSecret'), function(err, decoded) {
+        if (err) return res.json({ success: false, message: 'Failed to authenticate token.' });
+        User.findOne({ _id: req.body.user_id }).populate('projects').exec(function(err, user) {
+            if( err) return res.json({ success: false, message: err });
+            res.json({success: true, projects: user.projects})
+        })
+    });
+});
+
+// params: project_id
+// return: success: Boolean, project: Project
+apiRoutes.post('/project/get', function(req, res) {
+    var token = req.body.token || req.query.token || req.headers['x-access-token'];
+    jwt.verify(token, app.get('superSecret'), function(err, decoded) {
+        if (err) return res.json({ success: false, message: 'Failed to authenticate token.' });
+        Project.findOne({ _id: req.body.project_id }).populate('teams').exec(function(err, project) {
+            if( err) return res.json({ success: false, message: err });
+            res.json({success: true, project: project})
+        })
+    });
+});
+
+// params: team
+// return success: Boolean, team: Team
+apiRoutes.post('/team/new', function(req, res){
+    var token = req.body.token || req.query.token || req.headers['x-access-token'];
+    jwt.verify(token, app.get('superSecret'), function(err, decoded) {
+        if (err) return res.json({ success: false, message: 'Failed to authenticate token.' });
+        var author = decoded._doc
+        Team.create(req.body.team, function(err, team) {
+            if(err) return res.json({ success: false, message: err });
+            Project.findOneAndUpdate({_id: req.body.team.project}, {$push: {teams : team._id}}, function(err, project){
+                if( err) return res.json({ success: false, message: err });
+                User.updateMany({_id: { $in: req.body.team.sentIntivation }},{$push: { teamIntivations : team._id }}, function(err, users){
+                    if( err) return res.json({ success: false, message: err });
+                    for (var socket_id in io.sockets.connected) {
+                        if(io.sockets.connected[socket_id].user._id === author._id){
+                            io.sockets.connected[socket_id].emit('updateAuthenticatedUser',{type: 0, message: team.name + ' has been created succesfully for ' + project.title + '!'})
+                        }
+                        req.body.team.sentIntivation.forEach(function (user){
+                            if (user === io.sockets.connected[socket_id].user._id ) {
+                                io.sockets.connected[socket_id].emit('updateAuthenticatedUser',{type: 0, message: nameTag(author) + ' intived you to "' +team.name + '" team for "' + project.title + '" project!'})
+                            }
+                        });
+                    }
+                    res.json({success: true, users: users });
+                });
+            });
+
+        });
+    });
+});
+
+apiRoutes.get('/team/intivations', function(req, res) {
+    var token = req.body.token || req.query.token || req.headers['x-access-token'];
+    jwt.verify(token, app.get('superSecret'), function(err, decoded) {
+        if (err) return res.json({ success: false, message: 'Failed to authenticate token.' });
+        User.findOne({_id: decoded._doc._id}, function(err, user){
+            if(err) return res.json({success: false, 'message': err});
+            Team.find({_id: { $in: user.teamIntivations }}, function (err, teams) {
+                if (err) console.log(err)
+                res.json({success: true, intivations: teams})
+            })
+        })
+    });
+});
+
+//params: team_id
+apiRoutes.post('/team/intivations/accept', function(req, res) {
+    var token = req.body.token || req.query.token || req.headers['x-access-token'];
+    jwt.verify(token, app.get('superSecret'), function(err, decoded) {
+        if (err) return res.json({ success: false, message: 'Failed to authenticate token.' });
+        var user = decoded._doc;
+        Team.findOneAndUpdate({_id: req.body.team_id}, {$pull: {sentIntivation: user._id}, $push: { users: user._id }}, function(err, team){
+            if (err) return res.json({ success: false, message: err });
+            User.findOneAndUpdate({_id: user._id}, {$push: { projects: team.project, teams: team._id }, $pull: {teamIntivations: team._id}}, function(err, user){
+                if (err) return res.json({ success: false, message: err });
+                for (var socket_id in io.sockets.connected) {
+                    if(io.sockets.connected[socket_id].user._id === user._id){
+                        io.sockets.connected[socket_id].emit('updateAuthenticatedUser',{type: 0, message: 'You entered "' + team.name + '" team!'})
+                    }
+                    team.users.forEach(function (teamUser){
+                        if (teamUser === io.sockets.connected[socket_id].user._id ) {
+                            io.sockets.connected[socket_id].emit('updateAuthenticatedUser',{type: 0, message: nameTag(user) + ' accepted to join "' +team.name + '" team!'})
+                        }
+                    });
+                }
+                res.json({ success: true, user: user, project: team.project });
+            });
+        });
+    });
+});
+
 app.use('/api', apiRoutes);
 
 /*
@@ -427,9 +552,9 @@ io.on('connection', function(socket){
     // Join user to rooms
     socket.on('joinRooms', function (rooms){
         rooms.forEach(function(room){
-            socket.join(room);
-            socket.emit('joinedRoom', room);
-            serverLog('JOIN', socket.user.name, 'JOINED TO ROOM('+room+')!')
+            socket.join(room._id);
+            socket.emit('joinedRoom', room._id);
+            serverLog('JOIN', socket.user.name, 'JOINED TO ROOM('+room._id+')!')
         })
 
     });
@@ -458,17 +583,15 @@ io.on('connection', function(socket){
                     user: socket.user,
                     _id: message._id
                 }
-                console.log(response);
-                console.log(io.sockets.connected)
                 io.sockets.in(response.room).emit("gotMessage", response);
             });
         }
     });
 
-        socket.on('disconnect', function () {
-            if(socket.user)
-            serverLog('DISCONNECT', socket.user.username, 'DISCONNECTED FROM SERVER')
-        });
+    socket.on('disconnect', function () {
+        if(socket.user)
+        serverLog('DISCONNECT', socket.user.username, 'DISCONNECTED FROM SERVER')
+    });
 
 });
 
